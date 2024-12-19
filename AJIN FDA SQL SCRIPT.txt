@@ -1,0 +1,161 @@
+####Task 1: Identifying Approval Trends
+###Q1. Determine the number of drugs approved each year and provide insights into the yearly trends.
+SELECT 
+    YEAR(ActionDate) AS ApprovalYear, 
+    COUNT(*) AS NumberOfDrugsApproved
+FROM 
+    RegActionDate
+WHERE 
+    ActionType = 'AP'  -- assuming 'approved' is the value used for approvals
+GROUP BY 
+    ApprovalYear
+ORDER BY 
+    ApprovalYear ASC;
+    ### Q2Identify the top three years that got the highest and lowest approvals, in descending and ascending order, respectively.
+-- Top 3 years with highest approvals
+SELECT * FROM (
+    SELECT 
+        YEAR(ActionDate) AS ApprovalYear, 
+        COUNT(*) AS NumberOfDrugsApproved
+    FROM 
+        RegActionDate
+    WHERE 
+        ActionType = 'AP'  -- 'AP' represents approvals
+        AND YEAR(ActionDate) IS NOT NULL  -- Exclude NULL years
+    GROUP BY 
+        ApprovalYear
+    ORDER BY 
+        NumberOfDrugsApproved DESC
+    LIMIT 3
+) AS HighestApprovals
+
+UNION ALL
+
+-- Top 3 years with lowest approvals
+SELECT * FROM (
+    SELECT 
+        YEAR(ActionDate) AS ApprovalYear, 
+        COUNT(*) AS NumberOfDrugsApproved
+    FROM 
+        RegActionDate
+    WHERE 
+        ActionType = 'AP'
+        AND YEAR(ActionDate) IS NOT NULL  -- Exclude NULL years
+    GROUP BY 
+        ApprovalYear
+    ORDER BY 
+        NumberOfDrugsApproved ASC
+    LIMIT 3
+) AS LowestApprovals;
+
+ ### Q3Explore approval trends over the years based on sponsors.
+ SELECT YEAR(ActionDate) AS approval_year, SponsorApplicant, COUNT(*) AS total_approvals
+FROM Application a
+JOIN RegActionDate r ON a.ApplNo = r.ApplNo
+WHERE r.ActionType = 'AP'  -- Assuming "AP" stands for approval
+GROUP BY approval_year, SponsorApplicant
+ORDER BY approval_year ASC, total_approvals DESC;
+ ##Q4Rank sponsors based on the total number of approvals they received each year between 1939 and 1960.
+ SELECT YEAR(ActionDate) AS approval_year, SponsorApplicant, COUNT(*) AS total_approvals,
+       RANK() OVER (PARTITION BY YEAR(ActionDate) ORDER BY COUNT(*) DESC) AS sponsor_rank
+FROM Application a
+JOIN RegActionDate r ON a.ApplNo = r.ApplNo
+WHERE r.ActionType = 'AP' AND YEAR(ActionDate) BETWEEN 1939 AND 1960
+GROUP BY approval_year, SponsorApplicant
+ORDER BY approval_year ASC, sponsor_rank ASC;
+##Task 2: Segmentation Analysis Based on Drug MarketingStatus
+###Q1 Group products based on MarketingStatus. Provide meaningful insights into the segmentation patterns.
+SELECT 
+    CASE ProductMktStatus
+        WHEN 1 THEN 'Marketed'
+        WHEN 2 THEN 'Withdrawn'
+        WHEN 3 THEN 'Pending'
+        WHEN 4 THEN 'Pre-Market'
+        ELSE 'Unknown'
+    END AS Status,
+    COUNT(*) AS total_products
+FROM Product
+GROUP BY ProductMktStatus
+ORDER BY total_products DESC;
+###Q2 Calculate the total number of applications for each MarketingStatus year-wise after the year 2010.
+SELECT YEAR(r.ActionDate) AS approval_year, p.ProductMktStatus, COUNT(DISTINCT p.ApplNo) AS total_applications
+FROM Product p
+JOIN RegActionDate r ON p.ApplNo = r.ApplNo
+WHERE YEAR(r.ActionDate) > 2010
+GROUP BY approval_year, p.ProductMktStatus
+ORDER BY approval_year ASC, p.ProductMktStatus ASC;
+###Q3 Identify the top MarketingStatus with the maximum number of applications and analyze its trend over time.
+
+  SELECT final_query.approval_year, detail_query.ProductMktStatus, final_query.max_applications
+FROM (
+    SELECT approval_year, MAX(total_applications) AS max_applications
+    FROM (
+        SELECT YEAR(r.ActionDate) AS approval_year, p.ProductMktStatus, COUNT(DISTINCT p.ApplNo) AS total_applications
+        FROM Product p
+        JOIN RegActionDate r ON p.ApplNo = r.ApplNo
+        WHERE YEAR(r.ActionDate) > 2010
+        GROUP BY approval_year, p.ProductMktStatus
+    ) AS subquery
+    GROUP BY approval_year
+) AS final_query
+JOIN (
+    SELECT YEAR(r.ActionDate) AS approval_year, p.ProductMktStatus, COUNT(DISTINCT p.ApplNo) AS total_applications
+    FROM Product p
+    JOIN RegActionDate r ON p.ApplNo = r.ApplNo
+    WHERE YEAR(r.ActionDate) > 2010
+    GROUP BY YEAR(r.ActionDate), p.ProductMktStatus
+) AS detail_query
+ON final_query.approval_year = detail_query.approval_year
+AND final_query.max_applications = detail_query.total_applications
+ORDER BY final_query.approval_year ASC;
+##Task 3: Analyzing Products
+##Q1 Categorize Products by dosage form and analyze their distribution.
+SELECT Form AS dosage_form, COUNT(*) AS total_products
+FROM Product
+GROUP BY Form
+ORDER BY total_products DESC;
+##Q2 Calculate the total number of approvals for each dosage form and identify the most successful forms.
+SELECT p.Form AS dosage_form, COUNT(*) AS total_approvals
+FROM Product p
+JOIN RegActionDate r ON p.ApplNo = r.ApplNo
+WHERE r.ActionType = 'AP'  -- Assuming "AP" indicates approval
+GROUP BY p.Form
+ORDER BY total_approvals DESC;
+##Q3 Investigate yearly trends related to successful forms.
+SELECT YEAR(r.ActionDate) AS approval_year, p.Form AS dosage_form, COUNT(*) AS total_approvals
+FROM Product p
+JOIN RegActionDate r ON p.ApplNo = r.ApplNo
+WHERE r.ActionType = 'AP'
+GROUP BY approval_year, p.Form
+ORDER BY approval_year ASC, total_approvals DESC;
+##Task 4: Exploring Therapeutic Classes and Approval Trends
+##Q1 Analyze drug approvals based on the therapeutic evaluation code (TE_Code).
+SELECT TECode, COUNT(*) AS total_approvals
+FROM Product
+JOIN RegActionDate r ON Product.ApplNo = r.ApplNo
+WHERE r.ActionType = 'AP'
+GROUP BY TECode
+ORDER BY total_approvals DESC;
+##Q2 Determine the therapeutic evaluation code (TE_Code) with the highest number of Approvals in each year.
+SELECT subquery.approval_year, subquery.TECode, subquery.total_approvals AS max_approvals
+FROM (
+    SELECT YEAR(r.ActionDate) AS approval_year, p.TECode, COUNT(*) AS total_approvals
+    FROM Product p
+    JOIN RegActionDate r ON p.ApplNo = r.ApplNo
+    WHERE r.ActionType = 'AP' AND p.TECode IS NOT NULL  -- Filter out NULL TECode values
+    GROUP BY approval_year, p.TECode
+) AS subquery
+JOIN (
+    SELECT approval_year, MAX(total_approvals) AS max_approvals
+    FROM (
+        SELECT YEAR(r.ActionDate) AS approval_year, p.TECode, COUNT(*) AS total_approvals
+        FROM Product p
+        JOIN RegActionDate r ON p.ApplNo = r.ApplNo
+        WHERE r.ActionType = 'AP' AND p.TECode IS NOT NULL  -- Filter out NULL TECode values
+        GROUP BY approval_year, p.TECode
+    ) AS inner_subquery
+    GROUP BY approval_year
+) AS max_query
+ON subquery.approval_year = max_query.approval_year
+AND subquery.total_approvals = max_query.max_approvals
+ORDER BY subquery.approval_year ASC;
